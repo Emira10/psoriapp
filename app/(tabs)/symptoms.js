@@ -42,6 +42,14 @@ import {
 
 const STORAGE_KEY = 'symptom_records_v1';
 
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = 'https://ohnfupxbomdwrgajobbp.supabase.co';
+const supabaseAnonKey ='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9obmZ1cHhib21kd3JnYWpvYmJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTU3MDgsImV4cCI6MjA5MjY3MTcwOH0.hL5QqUhsfJCDZ4LNHfFwpjU25LP82UqW1b9cr_M9tks';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+const API_BASE_URL = 'http://localhost:5000/api';
+
 export default function SymptomsScreen() {
   const router = useRouter();
   const { isDark } = useThemeCustom();
@@ -341,21 +349,44 @@ const loadUserGender = async () => {
   };
 
   const loadSavedSymptoms = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
 
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setSavedSymptoms(parsed);
-        setFilteredSymptoms(parsed);
-      }
-    } catch (error) {
-      console.log(error);
-      Alert.alert('Hata', 'Kayıtlı semptomlar yüklenemedi.');
+    if (error || !user) {
+      console.log('USER ERROR:', error);
+      return;
     }
-  };
 
- 
+    const response = await fetch(`${API_BASE_URL}/symptoms/${user.id}`);
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      Alert.alert('Hata', result.message || 'Kayıtlı semptomlar yüklenemedi.');
+      return;
+    }
+
+    const mapped = (result.symptoms || []).map((item) => ({
+      id: item.id,
+      createdAt: item.created_at,
+      selectedDate: item.selected_date,
+      weather: item.weather,
+      selectedParts: item.selected_parts || [],
+      painLevel: item.pain_level || 0,
+      itchLevel: item.itch_level || 0,
+      selectedMoods: item.selected_moods || [],
+      selectedImage: item.selected_image,
+      aiResult: item.ai_result,
+      note: item.note,
+    }));
+
+    setSavedSymptoms(mapped);
+    setFilteredSymptoms(mapped);
+  } catch (error) {
+    console.log(error);
+    Alert.alert('Hata', 'Kayıtlı semptomlar yüklenemedi.');
+  }
+};
+
 
   const saveSymptomsToStorage = async (records) => {
     try {
@@ -380,34 +411,71 @@ const loadUserGender = async () => {
   };
 
   const handleSave = async () => {
-    const newRecord = {
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      selectedDate: selectedDate.toISOString(),
-      weather,
-      selectedParts,
-      painLevel,
-      itchLevel,
-      selectedMoods,
-      selectedImage,
-      aiResult,
-      note,
-    };
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
 
-    const updatedRecords = [newRecord, ...savedSymptoms];
-    await saveSymptomsToStorage(updatedRecords);
+    if (error || !user) {
+      Alert.alert('Hata', 'Önce giriş yapmalısınız.');
+      router.replace('/login');
+      return;
+    }
+
+    const response = await fetch(`${API_BASE_URL}/symptoms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kullanici_id: user.id,
+        selected_date: selectedDate.toISOString(),
+        weather,
+        selected_parts: selectedParts,
+        pain_level: painLevel,
+        itch_level: itchLevel,
+        selected_moods: selectedMoods,
+        selected_image: selectedImage,
+        ai_result: aiResult,
+        note,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      Alert.alert('Hata', result.message || 'Semptom kaydedilemedi.');
+      return;
+    }
+
+    await loadSavedSymptoms();
 
     Alert.alert('Başarılı', 'Semptom kaydı kaydedildi.');
     resetForm();
     setActiveTab('records');
-  };
+  } catch (error) {
+    console.log(error);
+    Alert.alert('Hata', 'Semptom kaydedilemedi.');
+  }
+};
 
-  const deleteSymptomRecord = async (id) => {
-    const filtered = savedSymptoms.filter((item) => item.id !== id);
-    await saveSymptomsToStorage(filtered);
-  };
+const deleteSymptomRecord = async (id) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/symptoms/${id}`, {
+      method: 'DELETE',
+    });
 
-  const confirmDeleteRecord = (id) => {
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      Alert.alert('Hata', result.message || 'Kayıt silinemedi.');
+      return;
+    }
+
+    await loadSavedSymptoms();
+  } catch (error) {
+    console.log(error);
+    Alert.alert('Hata', 'Kayıt silinemedi.');
+  }
+};
+
+const confirmDeleteRecord = (id) => {
   if (Platform.OS === 'web') {
     const ok = window.confirm('Bu semptom kaydını silmek istiyor musun?');
     if (ok) deleteSymptomRecord(id);
@@ -440,7 +508,15 @@ const clearAllRecords = () => {
         text: 'Tümünü Sil',
         style: 'destructive',
         onPress: async () => {
-          await saveSymptomsToStorage([]);
+          const { data: { user } } = await supabase.auth.getUser();
+
+if (user) {
+  await fetch(`${API_BASE_URL}/symptoms/all/${user.id}`, {
+    method: 'DELETE',
+  });
+}
+
+await loadSavedSymptoms();
         },
       },
     ]
@@ -797,13 +873,34 @@ const handleFilterEndText = (text) => {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Tarih Seçimi</Text>
 
-          <TouchableOpacity
-            style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <CalendarDays size={18} color="#8B2635" />
-            <Text style={styles.dateButtonText}>{formatDate(selectedDate)}</Text>
-          </TouchableOpacity>
+          <View style={styles.dateButton}>
+  <TouchableOpacity
+    onPress={() => {
+      if (Platform.OS !== 'web') {
+        setShowDatePicker(true);
+      }
+    }}
+  >
+    <CalendarDays size={18} color="#8B2635" />
+  </TouchableOpacity>
+
+  <TextInput
+    style={{ marginLeft: 10, flex: 1, color: '#8B2635' }}
+    value={formatDate(selectedDate)}
+    onChangeText={(text) => {
+      const parts = text.split('.');
+      if (parts.length === 3) {
+        const [day, month, year] = parts;
+        const newDate = new Date(year, month - 1, day);
+        if (!isNaN(newDate.getTime())) {
+          setSelectedDate(newDate);
+        }
+      }
+    }}
+    placeholder="GG.AA.YYYY"
+    placeholderTextColor="#b9a7ab"
+  />
+</View>
 
           {showDatePicker && (
             <DateTimePicker
@@ -890,46 +987,88 @@ const handleFilterEndText = (text) => {
   <Text style={styles.sectionTitle}>Tarihsel Filtreleme</Text>
 
   <View style={styles.filterRow}>
-    <View style={styles.filterInputBox}>
+
+  {/* 🔵 Başlangıç */}
+  <View style={styles.filterInputBox}>
+  {Platform.OS === 'web' ? (
+    <TextInput
+      style={styles.filterTextInput}
+      value={filterStartText}
+      onChangeText={setFilterStartText}
+      placeholder="Başlangıç"
+      placeholderTextColor="#b9a7ab"
+    />
+  ) : (
+    <>
       <TouchableOpacity
         style={styles.filterDateButton}
         onPress={() => setShowFilterStartPicker(true)}
       >
         <CalendarDays size={16} color="#8B2635" />
         <Text style={styles.filterDateText}>
-          {filterStartDate ? formatDate(filterStartDate) : 'Başlangıç'}
+          {filterStartText || 'Başlangıç'}
         </Text>
       </TouchableOpacity>
 
-      <TextInput
-        style={styles.filterTextInput}
-        value={filterStartText}
-        onChangeText={handleFilterStartText}
-        placeholder="GG.AA.YYYY"
-        placeholderTextColor="#b9a7ab"
-      />
-    </View>
+      {showFilterStartPicker && (
+        <DateTimePicker
+          value={filterStartText ? new Date(filterStartText) : new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setShowFilterStartPicker(false);
+            if (selectedDate) {
+              setFilterStartText(selectedDate.toISOString().split('T')[0]);
+            }
+          }}
+        />
+      )}
+    </>
+  )}
+</View>
 
-    <View style={styles.filterInputBox}>
+  {/* 🔵 Bitiş */}
+  <View style={styles.filterInputBox}>
+  {Platform.OS === 'web' ? (
+    <TextInput
+      style={styles.filterTextInput}
+      value={filterEndText}
+      onChangeText={setFilterEndText}
+      placeholder="Bitiş"
+      placeholderTextColor="#b9a7ab"
+    />
+  ) : (
+    <>
       <TouchableOpacity
         style={styles.filterDateButton}
         onPress={() => setShowFilterEndPicker(true)}
       >
         <CalendarDays size={16} color="#8B2635" />
         <Text style={styles.filterDateText}>
-          {filterEndDate ? formatDate(filterEndDate) : 'Bitiş'}
+          {filterEndText || 'Bitiş'}
         </Text>
       </TouchableOpacity>
 
-      <TextInput
-        style={styles.filterTextInput}
-        value={filterEndText}
-        onChangeText={handleFilterEndText}
-        placeholder="GG.AA.YYYY"
-        placeholderTextColor="#b9a7ab"
-      />
-    </View>
-  </View>
+      {showFilterEndPicker && (
+        <DateTimePicker
+          value={filterEndText ? new Date(filterEndText) : new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setShowFilterEndPicker(false);
+            if (selectedDate) {
+              setFilterEndText(selectedDate.toISOString().split('T')[0]);
+            }
+          }}
+        />
+      )}
+    </>
+  )}
+</View>
+
+</View>
+
+
 
   <View style={styles.filterActionRow}>
     <TouchableOpacity style={styles.filterButton} onPress={applyDateFilter}>

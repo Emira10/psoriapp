@@ -37,6 +37,7 @@ const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9obmZ1cHhib21kd3JnYWpvYmJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTU3MDgsImV4cCI6MjA5MjY3MTcwOH0.hL5QqUhsfJCDZ4LNHfFwpjU25LP82UqW1b9cr_M9tks';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const API_BASE_URL = 'http://localhost:5000/api';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function FototerapiScreen() {
@@ -61,6 +62,7 @@ export default function FototerapiScreen() {
   });
   const [showHistoryStartPicker, setShowHistoryStartPicker] = useState(false);
   const [showHistoryEndPicker, setShowHistoryEndPicker] = useState(false);
+  const [showNewPlanDatePicker, setShowNewPlanDatePicker] = useState(false);
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
   const todayString = () => new Date().toISOString().split('T')[0];
@@ -72,87 +74,52 @@ export default function FototerapiScreen() {
 
   // ─── Load Data from Supabase ─────────────────────────────────────────────────
   const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const userId = await getCurrentUserId();
+  setLoading(true);
 
-      // Load plans من fototerapi_planlari
-      let plansQuery = supabase
-        .from('fototerapi_planlari')
-        .select('*')
-        .order('baslangic_tarihi', { ascending: false });
+  try {
+    let userId = await getCurrentUserId();
 
-      if (userId) plansQuery = plansQuery.eq('kullanici_id', userId);
-
-      const { data: plansData, error: plansError } = await plansQuery;
-      if (plansError) console.error('Plans load error:', plansError);
-
-      // Load sessions من fototerapi_seanslari
-      let sessionsQuery = supabase
-        .from('fototerapi_seanslari')
-        .select('*')
-        .order('seans_no', { ascending: true });
-
-      if (userId) sessionsQuery = sessionsQuery.eq('kullanici_id', userId);
-
-      const { data: sessionsData, error: sessionsError } = await sessionsQuery;
-      if (sessionsError) console.error('Sessions load error:', sessionsError);
-
-      // Map DB rows → local format
-      if (plansData && plansData.length > 0) {
-        const mappedPlans = plansData.map((row) => ({
-          id: row.fototerapi_id,
-          db_id: row.fototerapi_id,
-          name: row.ad ?? 'Fototerapi Planı',
-          startDate: row.baslangic_tarihi ?? '',
-          sessionCount: row.seans_sayisi ?? 10,
-          isActive: row.aktif_mi ?? false,
-        }));
-        setPlans(mappedPlans);
-      } else {
-        setPlans([
-          {
-            id: 1,
-            name: 'Fototerapi Planı',
-            startDate: '2026-04-18',
-            sessionCount: 10,
-            isActive: true,
-          },
-        ]);
-      }
-
-      if (sessionsData && sessionsData.length > 0) {
-        const mappedSessions = sessionsData.map((row) => ({
-          id: row.seans_id,
-          db_id: row.seans_id,
-          planId: row.fototerapi_id,
-          sessionNo: row.seans_no ?? 1,
-          scheduledDate: row.tarih ?? '',
-          completedAt: row.tamamlanma_tarihi ?? null,
-          duration: row.sure_dakika ? String(row.sure_dakika) : '',
-          isCompleted: row.alindi_mi ?? false,
-        }));
-        setSessions(mappedSessions);
-      } else {
-        setSessions([
-          { id: 1, planId: 1, sessionNo: 1, scheduledDate: '2026-04-18', completedAt: null, duration: '', isCompleted: false },
-          { id: 2, planId: 1, sessionNo: 2, scheduledDate: '2026-04-20', completedAt: null, duration: '', isCompleted: false },
-          { id: 3, planId: 1, sessionNo: 3, scheduledDate: '2026-04-22', completedAt: null, duration: '', isCompleted: false },
-          { id: 4, planId: 1, sessionNo: 4, scheduledDate: '2026-04-24', completedAt: null, duration: '', isCompleted: false },
-          { id: 5, planId: 1, sessionNo: 5, scheduledDate: '2026-04-26', completedAt: null, duration: '', isCompleted: false },
-          { id: 6, planId: 1, sessionNo: 6, scheduledDate: '2026-04-28', completedAt: null, duration: '', isCompleted: false },
-          { id: 7, planId: 1, sessionNo: 7, scheduledDate: '2026-04-30', completedAt: null, duration: '', isCompleted: false },
-          { id: 8, planId: 1, sessionNo: 8, scheduledDate: '2026-05-02', completedAt: null, duration: '', isCompleted: false },
-          { id: 9, planId: 1, sessionNo: 9, scheduledDate: '2026-05-04', completedAt: null, duration: '', isCompleted: false },
-          { id: 10, planId: 1, sessionNo: 10, scheduledDate: '2026-05-06', completedAt: null, duration: '', isCompleted: false },
-        ]);
-      }
-    } catch (err) {
-      console.error('Load error:', err);
-    } finally {
-      setLoading(false);
+    if (!userId) {
+      userId = 'test-user-123';
     }
-  }, []);
+
+    const response = await fetch(`${API_BASE_URL}/fototerapi/${userId}`);
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      console.error('Load error:', result);
+      return;
+    }
+
+    const mappedPlans = (result.plans || []).map((row) => ({
+      id: row.fototerapi_id,
+      db_id: row.fototerapi_id,
+      name: row.ad ?? 'Fototerapi Planı',
+      startDate: row.baslangic_tarihi ?? '',
+      sessionCount: row.seans_sayisi ?? 10,
+      isActive: row.aktif_mi ?? false,
+    }));
+
+    const mappedSessions = (result.sessions || []).map((row) => ({
+      id: row.seans_id,
+      db_id: row.seans_id,
+      planId: row.fototerapi_id,
+      sessionNo: row.seans_no ?? 1,
+      scheduledDate: row.tarih ?? '',
+      completedAt: row.tamamlanma_tarihi ?? null,
+      duration: row.sure_dakika ? String(row.sure_dakika) : '',
+      isCompleted: row.alindi_mi ?? false,
+    }));
+
+    setPlans(mappedPlans);
+    setSessions(mappedSessions);
+      } catch (err) {
+    console.error('Load error:', err);
+  } finally {
+    setLoading(false);
+  }
+}, []);
+
 
   useEffect(() => {
     loadData();
@@ -205,19 +172,21 @@ export default function FototerapiScreen() {
 
     try {
       if (target.db_id) {
-        const { error } = await supabase
-          .from('fototerapi_seanslari')
-          .update({ alindi_mi: true, tamamlanma_tarihi: today })
-          .eq('seans_id', target.db_id);
-        if (error) console.error('Update session error:', error);
-      }
+  await fetch(`${API_BASE_URL}/fototerapi/session/${target.db_id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tamamlanma_tarihi: today,
+    }),
+  });
+}
     } catch (err) {
       console.error('Complete session error:', err);
     }
   };
 
 // ─── Create Plan ─────────────────────────────────────────────────────────────
-const createPlan = async () => {
+  const createPlan = async () => {
   const name = newPlanForm.name.trim();
   const startDate = newPlanForm.startDate;
   const sessionCount = Number(newPlanForm.sessionCount);
@@ -230,111 +199,35 @@ const createPlan = async () => {
   setSaving(true);
 
   try {
-    const userId = await getCurrentUserId();
+    let userId = await getCurrentUserId();
 
-    if (userId) {
-      const { error: deactivateError } = await supabase
-        .from('fototerapi_planlari')
-        .update({ aktif_mi: false })
-        .eq('kullanici_id', userId);
-
-      if (deactivateError) {
-        console.error('Deactivate old plans error:', deactivateError);
-      }
+    if (!userId) {
+      userId = 'test-user-123';
     }
 
-    const { data: planRow, error: planError } = await supabase
-      .from('fototerapi_planlari')
-      .insert([
-        {
-          ad: name,
-          baslangic_tarihi: startDate,
-          seans_sayisi: sessionCount,
-          aktif_mi: true,
-          ...(userId ? { kullanici_id: userId } : {}),
-        },
-      ])
-      .select()
-      .single();
+    const response = await fetch(`${API_BASE_URL}/fototerapi/plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kullanici_id: userId,
+        ad: name,
+        baslangic_tarihi: startDate,
+        seans_sayisi: sessionCount,
+      }),
+    });
 
-    console.log('PLAN ROW:', planRow);
-    console.log('PLAN ERROR:', planError);
+    const result = await response.json();
 
-    if (planError || !planRow) {
-      Alert.alert(
-        'Hata',
-        'Plan kaydedilemedi: ' + (planError?.message || 'Plan verisi alınamadı.')
-      );
+    if (!response.ok || !result.success) {
+      Alert.alert('Hata', result.message || 'Plan kaydedilemedi.');
       return;
     }
 
-    const newPlanId = planRow.fototerapi_id || planRow.id;
-
-    if (!newPlanId) {
-      console.error('Plan ID bulunamadı:', planRow);
-      Alert.alert('Hata', 'Plan ID bulunamadı. Tablo ID alanını kontrol et.');
-      return;
-    }
-
-    const generatedSessions = [];
-
-    for (let i = 0; i < sessionCount; i++) {
-      const sessionDate = new Date(startDate);
-      sessionDate.setDate(sessionDate.getDate() + i * 2);
-
-      generatedSessions.push({
-        fototerapi_id: newPlanId,
-        seans_no: i + 1,
-        tarih: sessionDate.toISOString().split('T')[0],
-        alindi_mi: false,
-        tamamlanma_tarihi: null,
-        sure_dakika: null,
-        ...(userId ? { kullanici_id: userId } : {}),
-      });
-    }
-
-    const { data: sessionRows, error: sessionError } = await supabase
-      .from('fototerapi_seanslari')
-      .insert(generatedSessions)
-      .select();
-
-    console.log('SESSION ROWS:', sessionRows);
-    console.log('SESSION ERROR:', sessionError);
-
-    if (sessionError) {
-      Alert.alert('Hata', 'Seanslar kaydedilemedi: ' + sessionError.message);
-      return;
-    }
-
-    setPlans((prev) =>
-      prev
-        .map((p) => ({ ...p, isActive: false }))
-        .concat({
-          id: newPlanId,
-          db_id: newPlanId,
-          name,
-          startDate,
-          sessionCount,
-          isActive: true,
-        })
-    );
-
-    const mappedNew = (sessionRows ?? []).map((row) => ({
-      id: row.seans_id || row.id,
-      db_id: row.seans_id || row.id,
-      planId: row.fototerapi_id,
-      sessionNo: row.seans_no,
-      scheduledDate: row.tarih,
-      completedAt: null,
-      duration: '',
-      isCompleted: false,
-    }));
-
-    setSessions((prev) => prev.concat(mappedNew));
+    await loadData();
 
     setNewPlanForm({
       name: 'Fototerapi Planı',
-      startDate: startDate,
+      startDate,
       sessionCount: '8',
     });
 
@@ -345,6 +238,30 @@ const createPlan = async () => {
     Alert.alert('Hata', 'Beklenmeyen bir hata oluştu.');
   } finally {
     setSaving(false);
+  }
+};
+
+// ─── Undo Session ────────────────────────────────────────────────────────────
+const undoSession = async (sessionId) => {
+  const target = sessions.find((s) => s.id === sessionId);
+  if (!target) return;
+
+  setSessions((prev) =>
+    prev.map((s) =>
+      s.id === sessionId ? { ...s, isCompleted: false, completedAt: null } : s
+    )
+  );
+
+  try {
+    if (target.db_id) {
+      await fetch(`${API_BASE_URL}/fototerapi/session/${target.db_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tamamlanma_tarihi: null }),
+      });
+    }
+  } catch (err) {
+    console.error('Undo session error:', err);
   }
 };
 
@@ -630,15 +547,40 @@ const renderHistory = () => (
 
       <Text style={styles.inputLabel}>Başlangıç Tarihi</Text>
       <View style={styles.inputWrapper}>
-        <Calendar size={18} color="#8B2635" />
-        <TextInput
-          style={styles.input}
-          value={newPlanForm.startDate}
-          onChangeText={(text) => setNewPlanForm({ ...newPlanForm, startDate: text })}
-          placeholder="2026-04-18"
-          placeholderTextColor="#b9a7ab"
-        />
-      </View>
+  <TouchableOpacity onPress={() => setShowNewPlanDatePicker(true)}>
+    <Calendar size={18} color="#8B2635" />
+  </TouchableOpacity>
+
+  <TextInput
+    style={styles.input}
+    value={newPlanForm.startDate}
+    onChangeText={(text) =>
+      setNewPlanForm({ ...newPlanForm, startDate: text })
+    }
+    placeholder="YYYY-MM-DD"
+    placeholderTextColor="#b9a7ab"
+    maxLength={10}
+    keyboardType="numbers-and-punctuation"
+  />
+</View>
+
+{showNewPlanDatePicker && (
+  <DateTimePicker
+    value={newPlanForm.startDate ? new Date(newPlanForm.startDate) : new Date()}
+    mode="date"
+    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+    onChange={(event, date) => {
+      if (Platform.OS === 'android') setShowNewPlanDatePicker(false);
+
+      if (date) {
+        setNewPlanForm((prev) => ({
+          ...prev,
+          startDate: date.toISOString().split('T')[0],
+        }));
+      }
+    }}
+  />
+)}
 
       <Text style={styles.inputLabel}>Seans Sayısı</Text>
       <TextInput

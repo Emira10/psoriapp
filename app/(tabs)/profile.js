@@ -16,6 +16,9 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = 'https://ohnfupxbomdwrgajobbp.supabase.co'; // حذفنا rest/v1 لأن المكتبة تضيفها تلقائياً
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9obmZ1cHhib21kd3JnYWpvYmJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTU3MDgsImV4cCI6MjA5MjY3MTcwOH0.hL5QqUhsfJCDZ4LNHfFwpjU25LP82UqW1b9cr_M9tks';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Backend API adresi
+// Web için localhost çalışır. Telefonda test edersen bilgisayar IP adresini kullanmalısın.
+const API_BASE_URL = 'http://localhost:5000/api';
 // ----------------------------------
 
 import { useThemeCustom } from '../../context/ThemeContext';
@@ -101,30 +104,28 @@ export default function ProfileScreen() {
   };
 
   const loadUserProfile = async (userId) => {
-    if (!userId) return;
+  if (!userId) return;
 
-    try {
-      const { data, error } = await supabase
-        .from('profil_kullanici')
-        .select('*')
-        .eq('kullanici_id', userId)
-        .maybeSingle();
+  try {
+    const response = await fetch(`${API_BASE_URL}/profile/${userId}`);
+    const result = await response.json();
 
-      if (error) {
-        console.log('PROFIL LOAD ERROR:', error);
-        return;
-      }
-
-      if (data) {
-        setSkinType(idToSkinType[data.tip_id] || 'karma');
-        setHeight(data.boy_cm ? String(data.boy_cm) : '170');
-        setWeight(data.kilo_kg ? String(data.kilo_kg) : '65');
-      }
-
-    } catch (err) {
-      console.log('PROFIL LOAD CATCH:', err);
+    if (!response.ok || !result.success) {
+      console.log('PROFIL LOAD ERROR:', result.message);
+      return;
     }
-  };
+
+    const data = result.profile;
+
+    if (data) {
+      setSkinType(idToSkinType[data.tip_id] || 'karma');
+      setHeight(data.boy_cm ? String(data.boy_cm) : '170');
+      setWeight(data.kilo_kg ? String(data.kilo_kg) : '65');
+    }
+  } catch (err) {
+    console.log('PROFIL LOAD CATCH:', err);
+  }
+};
 
   // ✅ الدالة المصلحة — تستخدم Supabase Auth مباشرة
   const saveUserProfile = async () => {
@@ -246,20 +247,22 @@ const handleSave = async () => {
       return;
     }
 
-    const { error } = await supabase
-      .from('profil_kullanici')
-      .upsert(
-        {
-          kullanici_id: user.id,
-          tip_id: skinTypeToId[skinType] || 3,
-          boy_cm: Number(height) || null,
-          kilo_kg: Number(weight) || null,
-        },
-        { onConflict: 'kullanici_id' }
-      );
+    const response = await fetch(`${API_BASE_URL}/profile/${user.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tip_id: skinTypeToId[skinType] || 3,
+        boy_cm: Number(height) || null,
+        kilo_kg: Number(weight) || null,
+      }),
+    });
 
-    if (error) {
-      Alert.alert('Hata', error.message);
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      Alert.alert('Hata', result.message || 'Profil kaydedilemedi.');
       return;
     }
 
@@ -592,6 +595,29 @@ const handleSave = async () => {
           <Text style={styles.premiumButtonText}>{isPremium ? 'Yönet' : 'Hemen Yükselt'}</Text>
         </TouchableOpacity>
       </View>
+
+      <View style={styles.missionHeader}>
+  <View style={styles.missionTitleLeft}>
+    <Zap size={18} color="#F59E0B" />
+    <Text style={[styles.missionTitle, { color: darkMode ? '#FFF' : '#8B2635' }]}>
+      Görevler
+    </Text>
+  </View>
+
+  <TouchableOpacity
+    style={styles.missionToggle}
+    onPress={() => setShowMissions((prev) => !prev)}
+  >
+    <Text style={styles.missionToggleText}>
+      {showMissions ? 'Gizle' : 'Göster'}
+    </Text>
+    {showMissions ? (
+      <ChevronDown size={16} color="#8B2635" />
+    ) : (
+      <ChevronRight size={16} color="#8B2635" />
+    )}
+  </TouchableOpacity>
+</View>
       {showMissions && activeMissions.map((mission) => (
         <View key={mission.id} style={[styles.missionCard, { backgroundColor: mission.isCompleted ? '#E8F5E9' : (darkMode ? '#1E1E1E' : '#FFF'), borderColor: mission.isCompleted ? '#BDE5C1' : (darkMode ? '#333' : '#FFF') }]}>
           <View style={styles.missionLeft}>
@@ -700,19 +726,79 @@ const handleSave = async () => {
         </View>
         <Text style={styles.levelMapTitle}>Seviye Haritası</Text>
         <View style={styles.levelMapContainer}>
-          {levels.map((item, index) => (
-            <View key={item.id} style={styles.levelMapRow}>
-              {index !== levels.length - 1 && <View style={[styles.levelMapLine, { backgroundColor: item.status === 'completed' ? '#8B2635' : '#E5E7EB' }]} />}
-              <View style={[styles.levelMapIcon, item.status === 'completed' && styles.levelMapIconCompleted, item.status === 'current' && styles.levelMapIconCurrent, item.status === 'locked' && styles.levelMapIconLocked]}>
-                {item.status === 'completed' ? <CheckCircle2 size={20} color="#FFF" /> : item.status === 'current' ? <Award size={20} color="#8B2635" /> : <Lock size={18} color="#CCC" />}
-              </View>
-              <View style={[styles.levelMapCard, { backgroundColor: darkMode ? '#1E1E1E' : '#FFF', borderColor: item.status === 'current' ? '#8B2635' : (darkMode ? '#333' : '#F1F1F1') }, item.status === 'current' && styles.levelMapCardCurrent]}>
-                <View><Text style={[styles.levelMapNumber, { color: item.status === 'locked' ? '#AAA' : '#8B2635' }]}>Seviye {item.id}</Text><Text style={[styles.levelMapName, { color: item.status === 'locked' ? '#AAA' : (darkMode ? '#FFF' : '#333') }]}>{item.title}</Text></View>
-                <Text style={styles.levelMapXp}>{item.xp} XP</Text>
-              </View>
-            </View>
-          ))}
+
+  {/* 📌 Ana dikey çizgi (tüm seviyeleri bağlayan ana hat) */}
+  <View style={styles.levelMapMainLine} />
+
+  {levels.map((item) => (
+    <View key={item.id} style={styles.levelMapRow}>
+
+      {/* 📌 Çizgi üzerindeki daire */}
+      <View
+        style={[
+          styles.levelMapIcon,
+          item.status === 'completed' && styles.levelMapIconCompleted,
+          item.status === 'current' && styles.levelMapIconCurrent,
+          item.status === 'locked' && styles.levelMapIconLocked,
+        ]}
+      >
+        {item.status === 'completed' ? (
+          <CheckCircle2 size={20} color="#FFF" />
+        ) : item.status === 'current' ? (
+          <Award size={20} color="#8B2635" />
+        ) : (
+          <Lock size={18} color="#CCC" />
+        )}
+      </View>
+
+      {/* 📌 Sağ taraftaki kart */}
+      <View
+        style={[
+          styles.levelMapCard,
+          {
+            backgroundColor: darkMode ? '#1E1E1E' : '#FFF',
+            borderColor:
+              item.status === 'current'
+                ? '#8B2635'
+                : darkMode
+                ? '#333'
+                : '#F1F1F1',
+          },
+          item.status === 'current' && styles.levelMapCardCurrent,
+        ]}
+      >
+        <View>
+          <Text
+            style={[
+              styles.levelMapNumber,
+              { color: item.status === 'locked' ? '#AAA' : '#8B2635' },
+            ]}
+          >
+            Seviye {item.id}
+          </Text>
+
+          <Text
+            style={[
+              styles.levelMapName,
+              {
+                color:
+                  item.status === 'locked'
+                    ? '#AAA'
+                    : darkMode
+                    ? '#FFF'
+                    : '#333',
+              },
+            ]}
+          >
+            {item.title}
+          </Text>
         </View>
+
+        <Text style={styles.levelMapXp}>{item.xp} XP</Text>
+      </View>
+    </View>
+  ))}
+</View>
       </ScrollView>
     );
   };
@@ -813,14 +899,43 @@ const handleSave = async () => {
 );
       
   return (
-    <View style={[styles.container, { backgroundColor: darkMode ? '#121212' : '#FDF2F4' }]}>
+  <View style={[styles.container, { backgroundColor: darkMode ? '#121212' : '#FDF2F4' }]}>
+    <View style={{ flex: 1 }}>
       {view === 'main' && renderMainView()}
       {view === 'user' && renderUserView()}
       {view === 'password' && renderPasswordView()}
       {view === 'levelDetail' && renderLevelDetailView()}
       {view === 'subscription' && renderSubscriptionView()}
     </View>
-  );
+
+    <View style={styles.bottomNav}>
+      <TouchableOpacity style={styles.navItem} onPress={() => router.push('/home')}>
+        <Home size={22} color="#b9a7ab" />
+        <Text style={styles.navText}>Ana Sayfa</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.navItem} onPress={() => router.push('/symptoms')}>
+        <Activity size={22} color="#b9a7ab" />
+        <Text style={styles.navText}>Semptom Takibi</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.navItem} onPress={() => router.push('/treatment')}>
+        <Pill size={22} color="#b9a7ab" />
+        <Text style={styles.navText}>Tedaviler</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.navItem} onPress={() => router.push('/fototerapi')}>
+        <BarChart3 size={22} color="#b9a7ab" />
+        <Text style={styles.navText}>Fototerapi Takibi</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.navItem}>
+        <User size={22} color="#8B2635" />
+        <Text style={[styles.navText, { color: '#8B2635' }]}>Profil</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+);
 }
 
 // --- Styles (كما هي بدون أي تغيير) ---
@@ -903,14 +1018,60 @@ const styles = StyleSheet.create({
   levelRemainingText: { fontSize: 13, color: '#666', textAlign: 'center' },
   levelRemainingBold: { fontWeight: 'bold', color: '#8B2635' },
   levelMapTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, color: '#8B2635' },
-  levelMapContainer: { paddingLeft: 10 },
-  levelMapRow: { flexDirection: 'row', marginBottom: 0, alignItems: 'flex-start' },
-  levelMapLine: { position: 'absolute', left: 20, top: 40, width: 2, height: 60, zIndex: -1 },
-  levelMapIcon: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#FFF', zIndex: 1, elevation: 2 },
+  levelMapContainer: {
+  paddingLeft: 10,
+  position: 'relative',
+},
+levelMapMainLine: {
+  position: 'absolute',
+  left: 20,
+  top: 0,
+  bottom: 0,
+  width: 3,
+  backgroundColor: '#E5E7EB',
+  zIndex: 0,
+},
+  levelMapRow: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  marginBottom: 30,
+  position: 'relative',
+},
+  levelMapLine: {
+  position: 'absolute',
+  left: 20,
+  top: 0,
+  width: 3,
+  height: '100%',
+  backgroundColor: '#E5E7EB',
+},
+  levelMapIcon: {
+  width: 42,
+  height: 42,
+  borderRadius: 21,
+  justifyContent: 'center',
+  alignItems: 'center',
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  borderWidth: 3,
+  borderColor: '#FFF',
+  zIndex: 2,
+},
   levelMapIconCompleted: { backgroundColor: '#8B2635' },
   levelMapIconCurrent: { backgroundColor: '#FFF', borderColor: '#8B2635' },
   levelMapIconLocked: { backgroundColor: '#F5F5F5', borderColor: '#E5E7EB' },
-  levelMapCard: { flex: 1, marginLeft: 15, padding: 15, borderRadius: 18, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+  levelMapCard: {
+  flex: 1,
+  marginLeft: 60,
+  padding: 15,
+  borderRadius: 18,
+  borderWidth: 1,
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 25,
+},
   levelMapCardCurrent: { elevation: 3, shadowColor: '#8B2635', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   levelMapNumber: { fontSize: 11, fontWeight: 'bold', marginBottom: 2 },
   levelMapName: { fontSize: 15, fontWeight: 'bold' },
@@ -923,4 +1084,27 @@ const styles = StyleSheet.create({
   selectedPlanCard: { borderColor: '#8B2635', backgroundColor: '#FFF5F6' },
   planTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
   planPrice: { fontSize: 18, fontWeight: 'bold', color: '#8B2635' },
+  bottomNav: {
+  height: 70,
+  backgroundColor: '#FFF',
+  borderTopWidth: 1,
+  borderTopColor: '#EEE',
+  flexDirection: 'row',
+  justifyContent: 'space-around',
+  alignItems: 'center',
+  paddingBottom: 6,
+},
+
+navItem: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+navText: {
+  fontSize: 11,
+  color: '#b9a7ab',
+  marginTop: 4,
+  fontWeight: '500',
+},
 });
