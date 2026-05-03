@@ -1,9 +1,16 @@
-const { createClient } = require("@supabase/supabase-js");
+// Supabase bağlantısı
 require("dotenv").config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+const { createClient } = require("@supabase/supabase-js");
+
+// 🔥 Backend için SERVICE ROLE kullanılır
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Supabase URL veya SERVICE ROLE KEY eksik.");
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 module.exports = supabase;

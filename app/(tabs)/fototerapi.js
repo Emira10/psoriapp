@@ -37,7 +37,7 @@ const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9obmZ1cHhib21kd3JnYWpvYmJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTU3MDgsImV4cCI6MjA5MjY3MTcwOH0.hL5QqUhsfJCDZ4LNHfFwpjU25LP82UqW1b9cr_M9tks';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://YOUR_IP:5000/api';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function FototerapiScreen() {

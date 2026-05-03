@@ -8,16 +8,16 @@ const {
   clearSymptoms,
 } = require("../controllers/symptomsController");
 
-// Kullanıcının kayıtlarını getir
-router.get("/:userId", getSymptoms);
-
-// Yeni kayıt ekle
+// 🔥 Yeni kayıt ekle (kullanici_belirti_kayitlari + diğer tablolar)
 router.post("/", addSymptom);
 
-// Tek kayıt sil
-router.delete("/:id", deleteSymptom);
-
-// Kullanıcının tüm kayıtlarını sil
+// 🔥 Tüm kayıtları sil (kullanıcıya göre)
 router.delete("/all/:userId", clearSymptoms);
+
+// 🔥 Kullanıcının tüm kayıtlarını getir
+router.get("/:userId", getSymptoms);
+
+// 🔥 Tek kayıt sil (ana kayıt + bağlı tablolar)
+router.delete("/:id", deleteSymptom);
 
 module.exports = router;

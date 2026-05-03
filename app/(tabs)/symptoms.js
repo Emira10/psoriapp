@@ -48,7 +48,28 @@ const supabaseUrl = 'https://ohnfupxbomdwrgajobbp.supabase.co';
 const supabaseAnonKey ='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9obmZ1cHhib21kd3JnYWpvYmJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwOTU3MDgsImV4cCI6MjA5MjY3MTcwOH0.hL5QqUhsfJCDZ4LNHfFwpjU25LP82UqW1b9cr_M9tks';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://YOUR_IP:5000/api';
+
+const getDeviceId = async () => {
+  try {
+    let id = await AsyncStorage.getItem('device_id');
+
+    if (!id) {
+      id =
+        'device_' +
+        Math.random().toString(36).substring(2, 11) +
+        '_' +
+        Date.now();
+
+      await AsyncStorage.setItem('device_id', id);
+    }
+
+    return id;
+  } catch (error) {
+    console.log('DEVICE ID ERROR:', error);
+    return 'device_default';
+  }
+};
 
 export default function SymptomsScreen() {
   const router = useRouter();
@@ -108,7 +129,6 @@ const loadUserGender = async () => {
 };
 
   useEffect(() => {
-    fetchWeather();
     loadSavedSymptoms();
     loadUserGender();
   }, []);
@@ -178,43 +198,6 @@ const loadUserGender = async () => {
 
   return baseLabel;
 };
-
- 
-
-  const weatherCodeToText = (code) => {
-    if (code === 0) return 'Güneşli';
-    if ([1, 2, 3].includes(code)) return 'Bulutlu';
-    if ([45, 48].includes(code)) return 'Sisli';
-    if ([61, 63, 65, 80, 81, 82].includes(code)) return 'Yağmurlu';
-    if ([71, 73, 75, 77, 85, 86].includes(code)) return 'Karlı';
-    if ([95, 96, 99].includes(code)) return 'Fırtınalı';
-    return 'Bilinmiyor';
-  };
-
-  const fetchWeather = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-
-      if (status !== 'granted') {
-        setWeather('Konum izni yok');
-        return;
-      }
-
-      const location = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = location.coords;
-
-      const res = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=weather_code`
-      );
-
-      const data = await res.json();
-      const code = data?.current?.weather_code;
-      setWeather(weatherCodeToText(code));
-    } catch (e) {
-      console.log(e);
-      setWeather('Hata');
-    }
-  };
 
   const pickFromGallery = async () => {
     try {
@@ -350,14 +333,12 @@ const loadUserGender = async () => {
 
   const loadSavedSymptoms = async () => {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
+    const deviceId = await getDeviceId();
+    const id = user?.id || deviceId;
 
-    if (error || !user) {
-      console.log('USER ERROR:', error);
-      return;
-    }
+    const response = await fetch(`${API_BASE_URL}/symptoms/${id}`);
 
-    const response = await fetch(`${API_BASE_URL}/symptoms/${user.id}`);
     const result = await response.json();
 
     if (!response.ok || !result.success) {
@@ -412,19 +393,16 @@ const loadUserGender = async () => {
 
   const handleSave = async () => {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
-
-    if (error || !user) {
-      Alert.alert('Hata', 'Önce giriş yapmalısınız.');
-      router.replace('/login');
-      return;
-    }
+    console.log("KAYDET BASILDI");
+    const { data: { user } } = await supabase.auth.getUser();
+    const deviceId = await getDeviceId();
 
     const response = await fetch(`${API_BASE_URL}/symptoms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        kullanici_id: user.id,
+        kullanici_id: user?.id || null,
+        cihaz_id: deviceId,
         selected_date: selectedDate.toISOString(),
         weather,
         selected_parts: selectedParts,
@@ -438,6 +416,7 @@ const loadUserGender = async () => {
     });
 
     const result = await response.json();
+    console.log("KAYDET RESULT:", result);
 
     if (!response.ok || !result.success) {
       Alert.alert('Hata', result.message || 'Semptom kaydedilemedi.');
@@ -508,16 +487,17 @@ const clearAllRecords = () => {
         text: 'Tümünü Sil',
         style: 'destructive',
         onPress: async () => {
-          const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+  const deviceId = await getDeviceId();
 
-if (user) {
-  await fetch(`${API_BASE_URL}/symptoms/all/${user.id}`, {
+  const id = user?.id || deviceId;
+
+  await fetch(`${API_BASE_URL}/symptoms/all/${id}`, {
     method: 'DELETE',
   });
-}
 
-await loadSavedSymptoms();
-        },
+  await loadSavedSymptoms();
+},
       },
     ]
   );
@@ -727,11 +707,6 @@ const handleFilterEndText = (text) => {
               <Text style={styles.uploadButtonText}>Galeri</Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Hava Durumu</Text>
-          <Text style={styles.weatherText}>{weather}</Text>
         </View>
 
         <View style={styles.card}>

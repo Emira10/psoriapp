@@ -18,7 +18,7 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // Backend API adresi
 // Web için localhost çalışır. Telefonda test edersen bilgisayar IP adresini kullanmalısın.
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://YOUR_IP:5000/api';
 // ----------------------------------
 
 import { useThemeCustom } from '../../context/ThemeContext';
@@ -72,6 +72,7 @@ export default function ProfileScreen() {
   const [locationPermission, setLocationPermission] = useState(false);
 
   const [skinType, setSkinType] = useState('karma');
+  const [userName, setUserName] = useState('Kullanıcı');
   const [height, setHeight] = useState('170');
   const [weight, setWeight] = useState('65');
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -81,6 +82,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     getCurrentUserAndLoadProfile();
+    fetchInitialData();
   }, []);
 
   // ✅ الدالة المصلحة — تستخدم Supabase Auth مباشرة
@@ -126,47 +128,6 @@ export default function ProfileScreen() {
     console.log('PROFIL LOAD CATCH:', err);
   }
 };
-
-  // ✅ الدالة المصلحة — تستخدم Supabase Auth مباشرة
-  const saveUserProfile = async () => {
-    try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        Alert.alert('Hata', 'Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.');
-        return;
-      }
-
-      console.log('SAVING FOR USER:', user.id);
-
-      const { data, error } = await supabase
-        .from('profil_kullanici')
-        .upsert(
-          {
-            kullanici_id: user.id,
-            tip_id: skinTypeToId[skinType] || 3,
-            boy_cm: Number(height),
-            kilo_kg: Number(weight),
-          },
-          { onConflict: 'kullanici_id' }
-        )
-        .select();
-
-      console.log('SAVE RESULT:', data, error);
-
-      if (error) {
-        Alert.alert('Hata', error.message);
-        return;
-      }
-
-      Alert.alert('Başarılı', 'Profil bilgileri kaydedildi. 🎉');
-      setView('main');
-
-    } catch (err) {
-      console.log('SAVE CATCH:', err);
-      Alert.alert('Hata', 'Beklenmeyen bir hata oluştu.');
-    }
-  };
 
   const [currentPassword, setCurrentPassword] = useState('123456');
   const [oldPasswordInput, setOldPasswordInput] = useState('');
@@ -812,10 +773,43 @@ const handleSave = async () => {
       {
         text: 'Evet, İptal Et',
         style: 'destructive',
-        onPress: () => {
-          setIsPremium(false);
-          Alert.alert('Bilgi', 'Aboneliğiniz iptal edildi.');
-          setView('main');
+        onPress: async () => {
+          try {
+            // 1. جلب بيانات المستخدم من سوبابيس (للتأكد من الـ ID)
+            const { data: { user } } = await supabase.auth.getUser();
+            
+            if (!user) {
+              Alert.alert('Hata', 'Oturum açmış kullanıcı bulunamadı.');
+              return;
+            }
+
+            // 2. إرسال طلب للسيرفر (Node.js) لإلغاء الاشتراك
+            // ملاحظة: تأكد أن المسار /profile/cancel أو المسار الذي برمجته في السيرفر صحيح
+            const response = await fetch(`${API_BASE_URL}/profile/${user.id}`, {
+              method: 'PUT', // أو POST حسب برمجة السيرفر عندك
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                is_premium: false, // نرسل الحالة الجديدة
+                // يمكنك إضافة بيانات أخرى يحتاجها السيرفر هنا
+              }),
+            });
+
+            if (response.ok) {
+              // 3. إذا السيرفر رد بنجاح، نحدث الواجهة
+              setIsPremium(false);
+              Alert.alert('Bilgi', 'Aboneliğiniz başarıyla iptal edildi.');
+              setView('main');
+            } else {
+              const errorData = await response.json();
+              Alert.alert('Hata', errorData.message || 'Sunucu hatası oluştu.');
+            }
+
+          } catch (error) {
+            console.error('Bağlantı hatası:', error);
+            Alert.alert('Hata', 'Sunucuya bağlanılamadı. Lütfen internetinizi kontrol edin.');
+          }
         },
       },
     ]
@@ -823,80 +817,80 @@ const handleSave = async () => {
 };
 
   const renderSubscriptionView = () => (
-  <ScrollView contentContainerStyle={styles.scrollContent}>
-    <TouchableOpacity style={styles.backButton} onPress={() => setView('main')}>
-      <Feather name="chevron-left" size={20} color="#8B2635" />
-      <Text style={styles.backButtonText}>Geri Dön</Text>
-    </TouchableOpacity>
+    <ScrollView contentContainerStyle={styles.scrollContent}>
+      <TouchableOpacity style={styles.backButton} onPress={() => setView('main')}>
+        <Feather name="chevron-left" size={20} color="#8B2635" />
+        <Text style={styles.backButtonText}>Geri Dön</Text>
+      </TouchableOpacity>
 
-    <View style={[styles.subscriptionCard, { backgroundColor: darkMode ? '#1E1E1E' : '#FFF', borderColor: darkMode ? '#333' : '#EEE' }]}>
-      <View style={styles.subscriptionIcon}>
-        <Crown size={34} color="#F59E0B" />
-      </View>
-      
-      <Text style={[styles.subscriptionTitle, { color: darkMode ? '#FFF' : '#8B2635' }]}>
-        Premium Ayrıcalıkları
-      </Text>
-
-      <View style={styles.planContainer}>
-        <TouchableOpacity 
-          style={[styles.planCard, selectedPlan === 'monthly' && styles.selectedPlanCard]} 
-          onPress={() => setSelectedPlan('monthly')}
-        >
-          <Text style={styles.planTitle}>Aylık</Text>
-          <Text style={styles.planPrice}>19.90 TL</Text>
-          {/* أضفت لك النص الفرعي ليعطي جمالية أكثر */}
-          <Text style={{ fontSize: 10, color: '#AAA' }}>Her ay yenilenir</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.planCard, selectedPlan === 'yearly' && styles.selectedPlanCard]} 
-          onPress={() => setSelectedPlan('yearly')}
-        >
-          <Text style={styles.planTitle}>Yıllık</Text>
-          <Text style={styles.planPrice}>189.90 TL</Text>
-          <Text style={{ fontSize: 10, color: '#AAA' }}>Yılda bir yenilenir</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* --- قسم المميزات اللي كان ناقص بالصور وضفناه هلق --- */}
-      <View style={{ marginVertical: 20, width: '100%', paddingHorizontal: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <CheckCircle2 size={18} color="#8B2635" />
-          <Text style={{ marginLeft: 10, color: darkMode ? '#CCC' : '#555' }}>%50 Fazla XP Bonusu</Text>
+      <View style={[styles.subscriptionCard, { backgroundColor: darkMode ? '#1E1E1E' : '#FFF', borderColor: darkMode ? '#333' : '#EEE' }]}>
+        <View style={styles.subscriptionIcon}>
+          <Crown size={34} color="#F59E0B" />
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <CheckCircle2 size={18} color="#8B2635" />
-          <Text style={{ marginLeft: 10, color: darkMode ? '#CCC' : '#555' }}>Sınırsız Fotoğraf Arşivi</Text>
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <CheckCircle2 size={18} color="#8B2635" />
-          <Text style={{ marginLeft: 10, color: darkMode ? '#CCC' : '#555' }}>Reklamsız Deneyim</Text>
-        </View>
-      </View>
-      {/* -------------------------------------------------- */}
-      
+        
+        <Text style={[styles.subscriptionTitle, { color: darkMode ? '#FFF' : '#8B2635' }]}>
+          Premium Ayrıcalıkları
+        </Text>
 
-      {/* الأزرار تظهر حسب حالة الاشتراك كما في الصور */}
-      {isPremium ? (
-        <View style={{ width: '100%', alignItems: 'center' }}>
-          <View style={{ backgroundColor: '#E8F5E9', padding: 12, borderRadius: 10, width: '100%', alignItems: 'center', marginBottom: 10 }}>
-            <Text style={{ color: '#2E7D32', fontWeight: 'bold' }}>Premium üyeliğin aktif</Text>
-          </View>
+        <View style={styles.planContainer}>
           <TouchableOpacity 
-            style={[styles.button, { backgroundColor: '#FCE8EC', borderWidth: 1, borderColor: '#F8D7DA' }]} 
-            onPress={handleCancelSubscription}
+            style={[styles.planCard, selectedPlan === 'monthly' && styles.selectedPlanCard]} 
+            onPress={() => setSelectedPlan('monthly')}
           >
+            <Text style={styles.planTitle}>Aylık</Text>
+            <Text style={styles.planPrice}>19.90 TL</Text>
+            <Text style={{ fontSize: 10, color: '#AAA' }}>Her ay yenilenir</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.planCard, selectedPlan === 'yearly' && styles.selectedPlanCard]} 
+            onPress={() => setSelectedPlan('yearly')}
+          >
+            <Text style={styles.planTitle}>Yıllık</Text>
+            <Text style={styles.planPrice}>189.90 TL</Text>
+            <Text style={{ fontSize: 10, color: '#AAA' }}>Yılda bir yenilenir</Text>
           </TouchableOpacity>
         </View>
-      ) : (
-        <TouchableOpacity style={styles.button} onPress={handlePurchase}>
-          <Text style={styles.buttonText}>Abone Ol</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  </ScrollView>
-);
+
+        <View style={{ marginVertical: 20, width: '100%', paddingHorizontal: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <CheckCircle2 size={18} color="#8B2635" />
+            <Text style={{ marginLeft: 10, color: darkMode ? '#CCC' : '#555' }}>%50 Fazla XP Bonusu</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <CheckCircle2 size={18} color="#8B2635" />
+            <Text style={{ marginLeft: 10, color: darkMode ? '#CCC' : '#555' }}>Sınırsız Fotoğraf Arşivi</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <CheckCircle2 size={18} color="#8B2635" />
+            <Text style={{ marginLeft: 10, color: darkMode ? '#CCC' : '#555' }}>Reklamsız Deneyim</Text>
+          </View>
+        </View>
+
+        {/* التعديل هون: القسم اللي بيظهر لما يكون المشترك بريميوم */}
+        {isPremium ? (
+          <View style={{ width: '100%', alignItems: 'center' }}>
+            {/* كرت الحالة النشطة */}
+            <View style={{ backgroundColor: '#E8F5E9', padding: 15, borderRadius: 12, width: '100%', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: '#2E7D32', fontWeight: 'bold' }}>Premium üyeliğin aktif</Text>
+            </View>
+            
+            {/* الزر الناقص اللي طلبته بنفس الستايل المطلوب */}
+            <TouchableOpacity 
+              style={[styles.button, { backgroundColor: '#FCE8EC', borderWidth: 1, borderColor: '#F8D7DA', width: '100%' }]} 
+              onPress={handleCancelSubscription}
+            >
+              <Text style={{ color: '#8B2635', fontWeight: 'bold', fontSize: 16 }}>Premium Aboneliği İptal Et</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.button} onPress={handlePurchase}>
+            <Text style={styles.buttonText}>Abone Ol</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </ScrollView>
+  );
       
   return (
   <View style={[styles.container, { backgroundColor: darkMode ? '#121212' : '#FDF2F4' }]}>
